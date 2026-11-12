@@ -37,17 +37,25 @@ class NetworkLayerRecoveryPlugin:
         window = self.iface.mainWindow()
 
         self.action_all = QAction(icon, "Recover network layers now", window)
-        self.action_all.setToolTip("Reopen every layer stored on a network drive")
+        self.action_all.setToolTip(
+            "Check every layer stored on a network drive and reopen the broken ones")
         self.action_all.triggered.connect(self.recover_all)
 
         self.action_selected = QAction("Recover selected layers", window)
-        self.action_selected.setToolTip("Reopen the layers selected in the Layers panel")
+        self.action_selected.setToolTip(
+            "Reopen the layers selected in the Layers panel (always reopened, no health check)")
         self.action_selected.triggered.connect(self.recover_selected)
+
+        self.action_force = QAction("Force reopen all network layers", window)
+        self.action_force.setToolTip(
+            "Reopen every network layer, even if it looks healthy (slow on big projects)")
+        self.action_force.triggered.connect(self.force_all)
 
         self.action_settings = QAction("Settings...", window)
         self.action_settings.triggered.connect(self.show_settings)
 
-        for action in (self.action_all, self.action_selected, self.action_settings):
+        for action in (self.action_all, self.action_selected, self.action_force,
+                       self.action_settings):
             self.iface.addPluginToMenu(MENU, action)
             self.actions.append(action)
         self.iface.addToolBarIcon(self.action_all)
@@ -102,6 +110,10 @@ class NetworkLayerRecoveryPlugin:
     def recover_all(self):
         self.engine.start("manual: all network layers", layers=None, wait_for_network=False)
 
+    def force_all(self):
+        self.engine.start("manual: force reopen all", layers=None, wait_for_network=False,
+                          force=True)
+
     def recover_selected(self):
         layers = self.iface.layerTreeView().selectedLayers()
         if not layers:
@@ -109,7 +121,8 @@ class NetworkLayerRecoveryPlugin:
                 TITLE, "Select one or more layers in the Layers panel first.",
                 Qgis.MessageLevel.Info, 5)
             return
-        self.engine.start("manual: selected layers", layers=layers, wait_for_network=False)
+        self.engine.start("manual: selected layers", layers=layers, wait_for_network=False,
+                          force=True)
 
     def show_settings(self):
         dialog = SettingsDialog(self.iface.mainWindow())

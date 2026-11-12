@@ -21,6 +21,8 @@ DEFAULTS = {
     "required_successes": 2,
     # Give up waiting for the network after this many seconds.
     "network_timeout_s": 180,
+    # Background read test per broken file; slower files are not reopened.
+    "preflight_timeout_s": 15,
     # Re-create the provider with setDataSource() if reload() is not enough.
     "allow_full_reopen": True,
 }

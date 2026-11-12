@@ -11,7 +11,7 @@ Sleep breaks the SMB connection. Windows reconnects the share after wake-up, but
 ## How it works
 
 ```
-detect resume ──► wait for the network ──► reopen layers ──► report
+detect resume ──► wait for network ──► check layers ──► background read test ──► reopen broken ──► report
 ```
 
 1. **Resume detection** (`power_monitor.py`)
@@ -21,20 +21,23 @@ detect resume ──► wait for the network ──► reopen layers ──► r
    - Only network layers are handled: UNC paths, or drives where `GetDriveTypeW == DRIVE_REMOTE`. Optionally it also handles removable USB drives, or every file-based layer.
    - Share roots and files are checked on **background threads** (`stat` plus a directory listing), so a dead share never freezes QGIS.
    - The plugin waits for N consecutive successful checks (2 by default). If it times out, it still recovers the layers on reachable shares and reports the rest.
-3. **Recovery** (`recovery.py`): runs on the main thread, one layer at a time, handing control back to the event loop between layers.
+3. **Health check** (`recovery.py`): every candidate layer gets a cheap check on the main thread, in 50 ms slices so the UI stays responsive (about 10 ms per layer).
+   - rasters: a real read of a small window in the middle of the image;
+   - vectors: fetching one feature (a layer with features that returns none counts as broken), plus a check that the layer **hasn't lost its editing capabilities**. For this it snapshots each layer's capabilities when the layer is loaded.
+   - **Healthy layers are never reloaded.** A manual run on a healthy 600+ layer project takes seconds.
+4. **Background read test** (`preflight.py`): each broken file is first read on a background thread. This uses plain file reads, plus a read-only SQLite query for GeoPackages, which also tests SQLite locks. A file that fails or doesn't answer within the limit (15 s by default) is **reported, not reopened**, because reopening it on the main thread could freeze QGIS. (No GDAL here: calling GDAL from several threads inside QGIS crashes it.)
+5. **Recovery**: runs on the main thread, one layer at a time, handing control back to the event loop between layers.
    - **Layers in edit mode are skipped**, because reopening the provider could lose unsaved edits.
-   - First it calls `layer.reload()`. The OGR/GDAL provider closes and reopens its data source, which also invalidates the OGR connection pool.
-   - Then it runs a health check:
-     - rasters: a real read from the middle of the image;
-     - vectors: fetching one feature, plus a check that the layer **hasn't lost its editing capabilities**. For this it snapshots each layer's capabilities when the layer is loaded.
+   - First it calls `layer.reload()`. The OGR/GDAL provider closes and reopens its data source, which also invalidates the OGR connection pool. The health check runs again afterwards.
    - If the reload wasn't enough, `setDataSource()` rebuilds the provider from the same source. The layer's ID, style, joins/relations and subset filter are kept.
    - Finally it stops any rendering in progress and fully refreshes the canvas, cache included (`refreshAllLayers`).
-4. **Report**: a summary appears in the message bar, with a "Details" button. The full log is in the *Log Messages → Network Layer Recovery* tab.
+6. **Report**: a summary appears in the message bar, with a "Details" button showing phase timings and any slow operations (> 1 s). The full log is in the *Log Messages → Network Layer Recovery* tab.
 
 ## Manual commands (Plugins → Network Layer Recovery)
 
-- **Recover network layers now**: reopens every network layer immediately. It's also a toolbar button.
+- **Recover network layers now**: checks every network layer and reopens only the broken ones. It's also a toolbar button.
 - **Recover selected layers**: reopens the layers selected in the Layers panel, including ones on local disks. Use this for a layer that was skipped because it was in edit mode, after you've saved or rolled back its edits.
+- **Force reopen all network layers**: reopens every network layer, even healthy-looking ones. This is slow on big projects.
 - **Settings…**: automatic or ask-first mode, removable drives, timings.
 
 ## Installation

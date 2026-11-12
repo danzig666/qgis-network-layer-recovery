@@ -33,6 +33,9 @@ _INT_FIELDS = [
      "Consecutive successful checks before layers are reopened."),
     ("network_timeout_s", "Give up after (s)", 10, 3600,
      "Reachable shares are still recovered; others are reported."),
+    ("preflight_timeout_s", "File read test limit (s)", 3, 300,
+     "Broken files are first read in the background; files that do not answer "
+     "in time are reported instead of being reopened (which could freeze QGIS)."),
 ]
 
 
