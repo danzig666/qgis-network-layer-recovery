@@ -16,7 +16,7 @@ detect resume ──► wait for network ──► check layers ──► backgr
 
 1. **Resume detection** (`power_monitor.py`)
    - Uses Windows `PowerRegisterSuspendResumeNotification` (powrprof.dll), which also reports Modern Standby (S0ix) transitions. The callback runs on an OS thread, so it only sets a flag and never touches QGIS objects.
-   - Fallback: a timer ticks every 5 seconds. If much more time passed between two ticks than the threshold (60 s by default), the plugin treats it as a sleep.
+   - Fallback: a timer ticks every 5 seconds and compares the wall clock with `QueryUnbiasedInterruptTime`, a clock that stops while Windows sleeps. The difference is the time actually spent asleep; if it's over the threshold (60 s by default), that counts as a sleep. A QGIS that was merely busy (a long processing task blocking the main thread) is not mistaken for a sleep.
 2. **Waiting for the network** (`network_probe.py`)
    - Only network layers are handled: UNC paths, or drives where `GetDriveTypeW == DRIVE_REMOTE`. Optionally it also handles removable USB drives, or every file-based layer.
    - Share roots and files are checked on **background threads** (`stat` plus a directory listing), so a dead share never freezes QGIS.
@@ -52,7 +52,6 @@ Works with QGIS 3.22+ (Qt5) and QGIS 4 (Qt6) (`supportsQt6=True`).
 - If Windows doesn't reconnect the share, the plugin can't recover it either; after the timeout it lists the unreachable layers. Open the drive in File Explorer, then run the manual command.
 - A layer in edit mode with a stale handle isn't recovered automatically: save or roll back its edits first, then use *Recover selected layers*.
 - GeoPackage over SMB in WAL mode is an SQLite limitation the plugin can't work around.
-- The wall-clock fallback can also trigger a recovery (harmless) when the QGIS main thread was blocked for more than 60 seconds.
 
 ## License
 

@@ -11,7 +11,8 @@ DEFAULTS = {
     "include_removable": True,
     # Treat every file-based layer as affected, even on local disks.
     "include_local": False,
-    # Wall-clock gap that counts as a sleep when no OS notification arrives.
+    # Minimum time asleep (wall clock minus sleep-excluding clock) that counts
+    # as a sleep when no OS notification arrives.
     "gap_threshold_s": 60,
     # Wait this long after resume before the first probe.
     "initial_delay_s": 5,

@@ -24,8 +24,9 @@ _BOOL_FIELDS = [
 ]
 
 _INT_FIELDS = [
-    ("gap_threshold_s", "Sleep detection gap (s)", 10, 3600,
-     "Fallback detection: a timer gap this long counts as a sleep/resume."),
+    ("gap_threshold_s", "Minimum sleep to react to (s)", 10, 3600,
+     "Fallback detection: the computer must have been asleep at least this long. "
+     "A busy QGIS (long processing task) does not count."),
     ("initial_delay_s", "Delay after resume (s)", 0, 300,
      "Wait before the first network check."),
     ("probe_interval_s", "Network check interval (s)", 1, 120, ""),

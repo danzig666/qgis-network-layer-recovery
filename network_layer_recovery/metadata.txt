@@ -7,7 +7,7 @@ description=Reopens file-based layers on network drives after Windows sleep/hibe
 about=When a project is opened from an SMB share / mapped network drive and the PC sleeps, the GDAL/OGR handles held by QGIS go stale. Even after Windows reconnects the share, some rasters fail to render and some vector layers cannot be edited.
     This plugin detects system resume (Windows power notifications plus a wall-clock gap fallback), waits until the network shares are reachable again (probing in a background thread so QGIS never freezes) and then reopens the data provider of every affected layer. Layers in edit mode are never touched automatically.
     A manual "Recover network layers" command and a "Recover selected layers" command are also provided.
-version=1.1.0
+version=1.1.1
 author=danzig666
 email=5346511+danzig666@users.noreply.github.com
 category=Layers
@@ -18,7 +18,9 @@ repository=https://github.com/danzig666/qgis-network-layer-recovery
 icon=icon.png
 experimental=True
 deprecated=False
-changelog=1.1.0
+changelog=1.1.1
+    - Fix: a long processing task or plugin that blocked QGIS for over 60 s was mistaken for a sleep and started a recovery run. The fallback detector now measures time actually spent asleep (QueryUnbiasedInterruptTime), and a busy main thread is only logged
+    1.1.0
     - Only broken layers are reopened: every layer gets a cheap health check first (a manual run on a healthy 600+ layer project now takes seconds instead of many minutes)
     - Broken files are read in a background thread before QGIS reopens them; locked or unresponsive files are reported instead of freezing QGIS
     - New "Force reopen all network layers" command

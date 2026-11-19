@@ -67,12 +67,14 @@ class NetworkLayerRecoveryPlugin:
         self.monitor = PowerMonitor(gap_threshold_seconds=config.get("gap_threshold_s"))
         self.monitor.resumed.connect(self._on_resumed)
         self.monitor.suspended.connect(lambda: log("System is suspending"))
+        self.monitor.blocked.connect(lambda s: log(
+            f"QGIS main thread was busy for {s} s (not a sleep) - no recovery needed"))
         self.monitor.start()
         if self.monitor.native_available:
             log("Windows suspend/resume notifications registered")
         else:
             log(f"OS power notifications unavailable ({self.monitor.native_error}); "
-                "using wall-clock gap detection only")
+                "using sleep-time detection only")
 
         project = QgsProject.instance()
         self._connect(project.layersAdded, self._on_layers_added)

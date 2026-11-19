@@ -9,10 +9,13 @@ Two independent mechanisms are combined:
    Modern Standby (S0ix) transitions, which classic ``WM_POWERBROADCAST``
    handling in a top-level window can miss.
 
-2. A wall-clock gap detector: a ``QTimer`` ticks every few seconds on the
-   main thread.  If far more wall-clock time elapsed between two ticks than
-   expected, the process was frozen (sleep, hibernate, VM pause, ...).
-   This works on every platform and is the fallback when (1) is unavailable.
+2. A sleep-time detector: a ``QTimer`` ticks every few seconds on the main
+   thread.  Between two ticks it compares the wall clock with a clock that
+   does NOT advance while the computer sleeps (``QueryUnbiasedInterruptTime``
+   on Windows, ``time.monotonic`` elsewhere).  The difference is the time
+   actually spent asleep.  Merely late ticks - the QGIS main thread blocked
+   by a long processing algorithm or plugin - do not count as a sleep,
+   because both clocks advance equally while the main thread is blocked.
 
 Both mechanisms feed into the same ``resumed`` signal, which is emitted on
 the main thread and debounced.
@@ -111,11 +114,38 @@ class _WindowsPowerNotification:
         self._callback = self._params = None
 
 
+def _awake_seconds():
+    """Seconds on a clock that stops while the system sleeps/hibernates."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            value = ctypes.c_ulonglong()
+            if ctypes.windll.kernel32.QueryUnbiasedInterruptTime(ctypes.byref(value)):
+                return value.value / 1e7  # 100 ns units
+        except Exception:
+            pass
+    # Linux CLOCK_MONOTONIC and macOS mach time also exclude suspend.
+    return time.monotonic()
+
+
+def sleep_detected(wall_gap, awake_gap, threshold):
+    """Return seconds slept if it exceeds ``threshold``, else 0.
+
+    ``wall_gap - awake_gap`` is the time spent suspended.  A blocked main
+    thread makes both gaps large but their difference stays ~0.
+    """
+    slept = wall_gap - awake_gap
+    return slept if slept > threshold else 0.0
+
+
 class PowerMonitor(QObject):
     """Emits ``resumed(reason)`` on the main thread after a sleep/resume."""
 
     resumed = pyqtSignal(str)
     suspended = pyqtSignal()
+    # main thread was blocked this many seconds without the system sleeping
+    blocked = pyqtSignal(int)
 
     def __init__(self, parent=None, tick_seconds=5, gap_threshold_seconds=60):
         super().__init__(parent)
@@ -125,6 +155,7 @@ class PowerMonitor(QObject):
         self._tick_seconds = max(1, int(tick_seconds))
         self.gap_threshold_seconds = max(10, int(gap_threshold_seconds))
         self._last_tick = time.time()
+        self._last_awake = _awake_seconds()
         self._last_emit = 0.0
         self.debounce_seconds = 20
 
@@ -148,6 +179,7 @@ class PowerMonitor(QObject):
     def start(self):
         self.native_available = self._native.register()
         self._last_tick = time.time()
+        self._last_awake = _awake_seconds()
         self._timer.start()
 
     def stop(self):
@@ -160,8 +192,11 @@ class PowerMonitor(QObject):
 
     def _on_tick(self):
         now = time.time()
+        awake = _awake_seconds()
         gap = now - self._last_tick
+        awake_gap = awake - self._last_awake
         self._last_tick = now
+        self._last_awake = awake
 
         with self._lock:
             native_resume = self._pending_resume
@@ -175,8 +210,13 @@ class PowerMonitor(QObject):
         reason = None
         if native_resume:
             reason = "Windows resume notification"
-        elif gap > self._tick_seconds + self.gap_threshold_seconds:
-            reason = f"wall-clock gap of {int(gap)} s"
+        else:
+            slept = sleep_detected(gap, awake_gap, self.gap_threshold_seconds)
+            if slept:
+                reason = f"system was asleep for about {int(slept)} s"
+            elif gap > self._tick_seconds + self.gap_threshold_seconds:
+                # Late tick without sleep: something blocked the main thread.
+                self.blocked.emit(int(gap))
 
         if reason and now - self._last_emit > self.debounce_seconds:
             self._last_emit = now
